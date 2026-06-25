@@ -681,17 +681,17 @@
         setTimeout(() => flash.classList.remove('show'), 250);
 
         const note = result.rows_updated > 1 ? ` (${result.rows_updated} rows updated)` : '';
-        showToast(decision === 'YES' ? `✅ Correct${note}` : `❌ Mismatch confirmed${note}`);
+        showToast(decision === 'YES' ? `✅ Mismatch Confirmed${note}` : `✅ No Mismatch${note}`);
 
         refreshProgress();
 
-        // Remove voted item from local list and auto-advance
-        items.splice(cursor, 1);
-        if (items.length === 0) {
-          emptyState.classList.add('show');
-        } else {
-          cursor = Math.min(cursor, items.length - 1);
+        // Mark item reviewed locally and auto-advance to next
+        item.human_review = decision;
+        if (cursor < items.length - 1) {
+          cursor++;
           render();
+        } else {
+          emptyState.classList.add('show');
         }
 
       } catch (err) {
