@@ -77,6 +77,14 @@
       border-radius: 99px; transition: width 0.4s ease;
     }
     #progress-text { white-space: nowrap; font-weight: 500; }
+    #cursor-input {
+      width: 52px; background: transparent; border: none; border-bottom: 1px solid currentColor;
+      color: inherit; font: inherit; font-size: inherit; font-weight: 700;
+      text-align: center; outline: none; -moz-appearance: textfield;
+    }
+    #cursor-input::-webkit-outer-spin-button,
+    #cursor-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    #cursor-input:focus { border-bottom-color: var(--accent); }
 
     .kbd-hint { font-size: 12px; color: var(--text-muted); }
     .kbd {
@@ -171,6 +179,7 @@
       font-size: 13px; font-weight: 700; color: #fff;
     }
     #linked-badge { font-size: 11px; color: var(--text-muted); display: none; margin-top: 4px; }
+    #s3-badge { font-size: 11px; color: var(--text-muted); display: none; margin-top: 2px; }
 
     .nav-btns { display: flex; gap: 6px; }
     .nav-btn {
@@ -361,8 +370,12 @@
         <!-- Counter + Nav -->
         <div id="item-counter" class="card">
           <div>
-            <span class="counter-badge" id="counter-text">— / —</span>
+            <span class="counter-badge" id="counter-text">
+              <input id="cursor-input" type="number" min="1" title="Jump to item" />
+              <span id="counter-total"> / —</span>
+            </span>
             <div id="linked-badge">🔗 <span id="linked-count">0</span> rows share this link — one vote covers all</div>
+            <div id="s3-badge">📁 S3: <span id="s3-filename"></span></div>
           </div>
           <div class="nav-btns">
             <button class="nav-btn" id="btn-prev" title="Previous (←)">‹</button>
@@ -415,10 +428,10 @@
 
     <footer>
       <button class="vote-btn" id="btn-no" disabled>
-        <span class="vote-icon">✗</span> No — Mismatch confirmed
+        <span class="vote-icon">✗</span> No — No Mismatch
       </button>
       <button class="vote-btn" id="btn-yes" disabled>
-        <span class="vote-icon">✓</span> Yes — Listing looks correct
+        <span class="vote-icon">✓</span> Yes — Mismatch Confirmed
       </button>
     </footer>
 
@@ -441,6 +454,8 @@
     const counterText    = document.getElementById('counter-text');
     const linkedBadge    = document.getElementById('linked-badge');
     const linkedCount    = document.getElementById('linked-count');
+    const s3Badge        = document.getElementById('s3-badge');
+    const s3Filename     = document.getElementById('s3-filename');
     const prodTitle      = document.getElementById('prod-title');
     const prodVisible    = document.getElementById('prod-visible');
     const prodReason     = document.getElementById('prod-reason');
@@ -499,7 +514,8 @@
       emptyState.classList.remove('show');
       const item = items[cursor];
 
-      counterText.textContent  = `${cursor + 1} / ${items.length} remaining`;
+      document.getElementById('cursor-input').value = cursor + 1;
+      document.getElementById('counter-total').textContent = ` / ${items.length} remaining`;
       prodTitle.textContent    = item.title       || '(no title)';
       prodVisible.textContent  = item.description || '—';
       prodReason.textContent   = item.reason      || '—';
@@ -545,6 +561,14 @@
         linkedBadge.style.display = 'block';
       } else {
         linkedBadge.style.display = 'none';
+      }
+
+      // S3 filename — always show if available
+      if (item.s3_filename_number) {
+        s3Filename.textContent = item.s3_filename_number;
+        s3Badge.style.display  = 'block';
+      } else {
+        s3Badge.style.display  = 'none';
       }
 
       // GeM link
@@ -702,6 +726,16 @@
     /* ── Controls ──────────────────────────────────────────── */
     btnPrev.addEventListener('click', () => { if (cursor > 0)               { cursor--; render(); } });
     btnNext.addEventListener('click', () => { if (cursor < items.length - 1) { cursor++; render(); } });
+
+    document.getElementById('cursor-input').addEventListener('change', function() {
+      const val = parseInt(this.value, 10);
+      if (!isNaN(val) && val >= 1 && val <= items.length) {
+        cursor = val - 1;
+        render();
+      } else {
+        this.value = cursor + 1; // reset to valid value
+      }
+    });
     btnYes.addEventListener('click',  () => vote('YES'));
     btnNo.addEventListener('click',   () => vote('NO'));
 

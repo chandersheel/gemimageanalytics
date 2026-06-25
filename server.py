@@ -309,6 +309,7 @@ def get_items():
             "page_status":   g["page_status"],
             "site_title":    g["site_title"],
             "linked_count":  len(g["s3_ids"]),
+            "s3_filename_number": g["s3_ids"][0] if g["s3_ids"] else "",
         })
 
     return jsonify(result)
