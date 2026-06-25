@@ -685,23 +685,13 @@
 
         refreshProgress();
 
-        // Reload fresh item list from server — removes this item and any
-        // others reviewed by teammates, then auto-advance to next item
-        try {
-          const freshRes = await fetch('/api/items');
-          if (freshRes.ok) {
-            const freshItems = await freshRes.json();
-            items  = freshItems;
-            // cursor stays — it now points to the next unreviewed item
-            cursor = Math.min(cursor, Math.max(0, items.length - 1));
-          }
-        } catch (_) { /* non-fatal, keep existing list and advance */ }
-
-        // Auto-advance: move to next item (current was just reviewed)
-        if (items.length > 0) {
-          render();
-        } else {
+        // Remove voted item from local list and auto-advance
+        items.splice(cursor, 1);
+        if (items.length === 0) {
           emptyState.classList.add('show');
+        } else {
+          cursor = Math.min(cursor, items.length - 1);
+          render();
         }
 
       } catch (err) {

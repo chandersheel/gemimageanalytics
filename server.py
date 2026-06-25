@@ -46,35 +46,26 @@ app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="")
 # Singleton Sheets service
 # ---------------------------------------------------------------------------
 
-_SERVICE = None
-_SERVICE_LOCK = threading.Lock()
-_CACHE_LOCK   = threading.Lock()
+_CREDS      = None          # credentials object — built once, safe to share
+_CREDS_LOCK = threading.Lock()
+_CACHE_LOCK = threading.Lock()
+_thread_local = threading.local()  # per-thread service instance
 
-def _get_service():
-    """Build Google Sheets API service once, reuse forever (thread-safe).
 
-    Credential resolution order:
-    1. GOOGLE_CREDENTIALS_JSON env var — full JSON content as a string (Railway/cloud)
-    2. GOOGLE_SERVICE_ACCOUNT_JSON env var — path to a local JSON file
-    3. credentials.json next to server.py (local dev fallback)
-    """
-    global _SERVICE
-    with _SERVICE_LOCK:
-        if _SERVICE is not None:
-            return _SERVICE
-
-        # 1. Inline JSON content from env var (preferred for cloud hosting)
+def _get_creds():
+    """Build credentials once and cache them (credentials are thread-safe)."""
+    global _CREDS
+    with _CREDS_LOCK:
+        if _CREDS is not None:
+            return _CREDS
         inline_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "").strip()
         if inline_json:
             try:
                 info = json.loads(inline_json)
             except json.JSONDecodeError as e:
-                raise ValueError(f"Failed to parse GOOGLE_CREDENTIALS_JSON: {e}. Make sure you copied the raw JSON exactly.")
-            creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-            _SERVICE = build("sheets", "v4", credentials=creds, cache_discovery=False)
-            return _SERVICE
-
-        # 2. Path to JSON file from env var
+                raise ValueError(f"Failed to parse GOOGLE_CREDENTIALS_JSON: {e}.")
+            _CREDS = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+            return _CREDS
         key_path = os.environ.get(
             "GOOGLE_SERVICE_ACCOUNT_JSON",
             os.path.join(os.path.dirname(__file__), "credentials.json"),
@@ -82,12 +73,18 @@ def _get_service():
         if not os.path.exists(key_path):
             raise FileNotFoundError(
                 f"Service account key not found at {key_path}. "
-                "Set GOOGLE_CREDENTIALS_JSON (JSON content) or GOOGLE_SERVICE_ACCOUNT_JSON (file path), "
-                "or place credentials.json next to server.py."
+                "Set GOOGLE_CREDENTIALS_JSON or place credentials.json next to server.py."
             )
-        creds = service_account.Credentials.from_service_account_file(key_path, scopes=SCOPES)
-        _SERVICE = build("sheets", "v4", credentials=creds, cache_discovery=False)
-        return _SERVICE
+        _CREDS = service_account.Credentials.from_service_account_file(key_path, scopes=SCOPES)
+        return _CREDS
+
+
+def _get_service():
+    """Return a per-thread Sheets service instance (googleapiclient is not thread-safe)."""
+    svc = getattr(_thread_local, "service", None)
+    if svc is None:
+        _thread_local.service = build("sheets", "v4", credentials=_get_creds(), cache_discovery=False)
+    return _thread_local.service
 
 # ---------------------------------------------------------------------------
 # In-memory sheet cache
@@ -157,9 +154,7 @@ def batch_write(updates):
             body={"valueInputOption": "RAW", "data": data},
         ).execute()
     except Exception:
-        # Reset service so it gets rebuilt on next call
-        with _SERVICE_LOCK:
-            _SERVICE = None
+        _thread_local.service = None  # force rebuild on next call for this thread
         raise
     _invalidate_cache()
 
@@ -275,7 +270,7 @@ def proxy():
 def get_items():
     """Return list of unique product links that still need human review."""
     try:
-        headers, rows = read_all_rows(force=True)  # always fetch fresh from sheet
+        headers, rows = read_all_rows(force=True)  # fresh fetch on page load to pick up other reviewers' work
     except Exception as e:
         return jsonify({"error": f"Failed to read sheet: {e}"}), 500
 
