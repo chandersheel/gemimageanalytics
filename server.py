@@ -16,6 +16,7 @@ Optimizations:
 
 import os
 import json
+import threading
 import requests
 from urllib.parse import urlparse, urljoin, quote
 from bs4 import BeautifulSoup
@@ -46,6 +47,8 @@ app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="")
 # ---------------------------------------------------------------------------
 
 _SERVICE = None
+_SERVICE_LOCK = threading.Lock()
+_CACHE_LOCK   = threading.Lock()
 
 def _get_service():
     """Build Google Sheets API service once, reuse forever.
@@ -56,8 +59,9 @@ def _get_service():
     3. credentials.json next to server.py (local dev fallback)
     """
     global _SERVICE
-    if _SERVICE is not None:
-        return _SERVICE
+    with _SERVICE_LOCK:
+        if _SERVICE is not None:
+            return _SERVICE
 
     # 1. Inline JSON content from env var (preferred for cloud hosting)
     inline_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "").strip()
@@ -89,13 +93,15 @@ def _get_service():
 _CACHE = {"headers": None, "rows": None}
 
 def _invalidate_cache():
-    _CACHE["headers"] = None
-    _CACHE["rows"]    = None
+    with _CACHE_LOCK:
+        _CACHE["headers"] = None
+        _CACHE["rows"]    = None
 
 def read_all_rows(force=False):
     """Return (headers, rows). Uses cache unless force=True or cache is empty."""
-    if not force and _CACHE["headers"] is not None:
-        return _CACHE["headers"], _CACHE["rows"]
+    with _CACHE_LOCK:
+        if not force and _CACHE["headers"] is not None:
+            return _CACHE["headers"], _CACHE["rows"]
 
     svc    = _get_service()
     result = svc.spreadsheets().values().get(
@@ -103,14 +109,15 @@ def read_all_rows(force=False):
         range=f"'{SHEET_NAME}'"
     ).execute()
     values = result.get("values", [])
-    if not values:
-        _CACHE["headers"] = []
-        _CACHE["rows"]    = []
-        return [], []
 
-    _CACHE["headers"] = values[0]
-    _CACHE["rows"]    = values[1:]
-    return _CACHE["headers"], _CACHE["rows"]
+    with _CACHE_LOCK:
+        if not values:
+            _CACHE["headers"] = []
+            _CACHE["rows"]    = []
+            return [], []
+        _CACHE["headers"] = values[0]
+        _CACHE["rows"]    = values[1:]
+        return _CACHE["headers"], _CACHE["rows"]
 
 # ---------------------------------------------------------------------------
 # Column helpers
