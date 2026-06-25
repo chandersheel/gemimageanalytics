@@ -1,0 +1,7 @@
+flask>=3.0
+gunicorn>=21.0
+requests>=2.31
+beautifulsoup4>=4.12
+google-auth>=2.28
+google-api-python-client>=2.120
+lxml>=5.0

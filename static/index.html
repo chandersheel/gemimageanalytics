@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GeM Product Review Tool</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0b0f1a;
+      --surface: rgba(255,255,255,0.04);
+      --surface-2: rgba(255,255,255,0.08);
+      --border: rgba(255,255,255,0.10);
+      --accent-blue: #4f8ef7;
+      --accent-green: #22d3a0;
+      --accent-red: #f25c5c;
+      --text-primary: #e8eaf0;
+      --text-muted: #8892a4;
+      --radius: 14px;
+      --transition: 0.2s cubic-bezier(.4,0,.2,1);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      overflow: hidden;
+    }
+
+    /* ── App Layout ─────────────────────────────────────────── */
+    #app {
+      display: grid;
+      grid-template-rows: 64px 1fr 80px;
+      height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      background: rgba(11,15,26,0.9);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(20px);
+      z-index: 10;
+    }
+    .logo {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 17px; font-weight: 700; letter-spacing: -0.3px;
+    }
+    .logo-badge {
+      background: linear-gradient(135deg, #4f8ef7, #22d3a0);
+      border-radius: 8px; width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px;
+    }
+    .header-right { display: flex; align-items: center; gap: 20px; }
+
+    #progress-wrap {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: var(--text-muted);
+    }
+    #progress-bar-track {
+      width: 140px; height: 6px;
+      background: var(--surface-2); border-radius: 99px; overflow: hidden;
+    }
+    #progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #4f8ef7, #22d3a0);
+      border-radius: 99px; transition: width 0.4s ease;
+    }
+    #progress-text { white-space: nowrap; font-weight: 500; }
+
+    .kbd-hint { font-size: 12px; color: var(--text-muted); }
+    .kbd {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 5px; padding: 1px 6px;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.5px;
+    }
+
+    /* ── Main Grid ──────────────────────────────────────────── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      overflow: hidden;
+    }
+
+    /* ── Left: Product Page Panel ──────────────────────────── */
+    #iframe-panel {
+      position: relative;
+      background: #060a14;
+      border-right: 1px solid var(--border);
+    }
+
+    /* Loading overlay */
+    #iframe-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px; z-index: 5; background: var(--bg);
+      transition: opacity 0.3s;
+    }
+    #iframe-overlay.hidden { opacity: 0; pointer-events: none; }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border); border-top-color: var(--accent-blue);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Fallback when GeM blocks iframe embedding */
+    #iframe-fallback {
+      display: none;
+      position: absolute; inset: 0;
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 20px; background: #060a14; z-index: 6;
+      text-align: center; padding: 40px;
+    }
+    #iframe-fallback.show { display: flex; }
+    #iframe-fallback .icon { font-size: 52px; }
+    #iframe-fallback h3 { font-size: 18px; font-weight: 600; }
+    #iframe-fallback p { color: var(--text-muted); font-size: 14px; line-height: 1.6; max-width: 380px; }
+    .open-btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 28px;
+      background: linear-gradient(135deg, #4f8ef7, #22d3a0);
+      border: none; border-radius: 12px; color: #fff;
+      font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none;
+      transition: opacity var(--transition), transform var(--transition);
+      box-shadow: 0 4px 20px rgba(79,142,247,0.35);
+    }
+    .open-btn:hover { opacity: 0.88; transform: translateY(-2px); }
+
+    #product-iframe { width: 100%; height: 100%; border: none; display: block; }
+
+    /* ── Right: Info Panel ──────────────────────────────────── */
+    #info-panel {
+      display: flex; flex-direction: column;
+      overflow-y: auto; padding: 20px 18px; gap: 14px;
+      scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    }
+    #info-panel::-webkit-scrollbar { width: 5px; }
+    #info-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+    }
+    .card-label {
+      font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+      text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;
+    }
+    .card-value {
+      font-size: 13px; line-height: 1.65; color: var(--text-primary);
+    }
+
+    /* Counter + Nav */
+    #item-counter { display: flex; align-items: center; justify-content: space-between; }
+    .counter-badge {
+      background: linear-gradient(135deg, #4f8ef7, #22d3a0);
+      border-radius: 8px; padding: 4px 12px;
+      font-size: 13px; font-weight: 700; color: #fff;
+    }
+    #linked-badge { font-size: 11px; color: var(--text-muted); display: none; margin-top: 4px; }
+
+    .nav-btns { display: flex; gap: 6px; }
+    .nav-btn {
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text-primary); cursor: pointer;
+      font-size: 16px; width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background var(--transition), transform var(--transition);
+    }
+    .nav-btn:hover:not(:disabled) { transform: scale(1.08); }
+    .nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* Title card */
+    #title-card .card-value { font-size: 14px; font-weight: 600; line-height: 1.5; }
+
+    /* Spec mismatch badge */
+    .spec-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 600; padding: 3px 10px;
+      border-radius: 99px; margin-top: 8px;
+    }
+    .spec-yes { background: rgba(242,92,92,0.18); color: #f25c5c; border: 1px solid rgba(242,92,92,0.35); }
+    .spec-no  { background: rgba(34,211,160,0.18); color: #22d3a0; border: 1px solid rgba(34,211,160,0.35); }
+
+    /* GeM link card */
+    #gem-link-card { display: flex; flex-direction: column; gap: 10px; }
+    #gem-link-url {
+      font-size: 11px; color: var(--text-muted);
+      word-break: break-all; line-height: 1.5;
+      padding: 8px 10px; background: rgba(0,0,0,0.25);
+      border-radius: 8px; border: 1px solid var(--border);
+    }
+    #btn-open-gem {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 9px 18px;
+      background: linear-gradient(135deg, #4f8ef7, #22d3a0);
+      border: none; border-radius: 10px; color: #fff;
+      font-size: 13px; font-weight: 700; cursor: pointer; text-decoration: none;
+      transition: opacity var(--transition), transform var(--transition);
+      box-shadow: 0 3px 14px rgba(79,142,247,0.3); width: 100%;
+    }
+    #btn-open-gem:hover { opacity: 0.88; transform: translateY(-1px); }
+    #btn-open-gem:active { transform: scale(0.97); }
+
+    /* Review inputs */
+    .custom-input {
+      width: 100%; background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 9px 12px; color: var(--text-primary);
+      font-size: 13px; font-family: 'Inter', sans-serif;
+    }
+    .custom-input:focus { outline: none; border-color: var(--accent-blue); }
+    .custom-input::placeholder { color: var(--text-muted); }
+
+    /* ── Footer ─────────────────────────────────────────────── */
+    footer {
+      display: flex; align-items: center; justify-content: center; gap: 24px;
+      padding: 0 40px;
+      background: rgba(11,15,26,0.95); border-top: 1px solid var(--border);
+      backdrop-filter: blur(20px);
+    }
+    .vote-btn {
+      flex: 1; max-width: 260px; height: 48px;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      border: none; border-radius: 12px;
+      font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 700;
+      cursor: pointer;
+      transition: transform var(--transition), box-shadow var(--transition), opacity var(--transition);
+      position: relative; overflow: hidden;
+    }
+    .vote-btn::before {
+      content: ''; position: absolute; inset: 0;
+      background: rgba(255,255,255,0.08); opacity: 0;
+      transition: opacity var(--transition);
+    }
+    .vote-btn:hover:not(:disabled)::before { opacity: 1; }
+    .vote-btn:hover:not(:disabled) { transform: translateY(-2px); }
+    .vote-btn:active { transform: scale(0.97); }
+    .vote-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    #btn-yes { background: linear-gradient(135deg, #22d3a0, #16a085); color: #fff; box-shadow: 0 4px 20px rgba(34,211,160,0.35); }
+    #btn-yes:hover:not(:disabled) { box-shadow: 0 6px 28px rgba(34,211,160,0.5); }
+    #btn-no  { background: linear-gradient(135deg, #f25c5c, #c0392b); color: #fff; box-shadow: 0 4px 20px rgba(242,92,92,0.35); }
+    #btn-no:hover:not(:disabled)  { box-shadow: 0 6px 28px rgba(242,92,92,0.5); }
+
+    .vote-icon { font-size: 18px; }
+
+    /* ── Flash ──────────────────────────────────────────────── */
+    #flash { position: fixed; inset: 0; pointer-events: none; z-index: 999; opacity: 0; transition: opacity 0.15s; }
+    #flash.yes { background: rgba(34,211,160,0.12); }
+    #flash.no  { background: rgba(242,92,92,0.12); }
+    #flash.show { opacity: 1; }
+
+    /* ── Toast ──────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 96px; left: 50%;
+      transform: translateX(-50%) translateY(12px);
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 22px;
+      font-size: 13px; font-weight: 500; color: var(--text-primary);
+      opacity: 0; transition: opacity 0.2s, transform 0.2s;
+      z-index: 998; white-space: nowrap;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── Empty state ────────────────────────────────────────── */
+    #empty-state {
+      display: none; position: fixed; inset: 0;
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px; background: var(--bg); z-index: 100;
+      color: var(--text-muted); font-size: 15px;
+    }
+    #empty-state.show { display: flex; }
+    #empty-state .big { font-size: 52px; }
+
+    /* ── Loading state ──────────────────────────────────────── */
+    #loading-state {
+      display: flex; position: fixed; inset: 0;
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px; background: var(--bg); z-index: 100;
+    }
+    #loading-state.hidden { display: none; }
+  </style>
+</head>
+
+<body>
+
+  <!-- Full-screen loading state -->
+  <div id="loading-state">
+    <div class="spinner"></div>
+    <span style="color:var(--text-muted);font-size:14px">Loading review items from Google Sheets…</span>
+  </div>
+
+  <!-- Full-screen empty/done state -->
+  <div id="empty-state">
+    <div class="big">🎉</div>
+    <div style="font-size:20px;font-weight:700;color:var(--text-primary)">All Done!</div>
+    <div>Every product link has been reviewed. Great work!</div>
+  </div>
+
+  <div id="app">
+
+    <header>
+      <div class="logo">
+        <div class="logo-badge">🔍</div>
+        GeM Product Review
+      </div>
+      <div class="header-right">
+        <div id="progress-wrap">
+          <div id="progress-bar-track">
+            <div id="progress-bar-fill" style="width:0%"></div>
+          </div>
+          <span id="progress-text">Loading…</span>
+        </div>
+        <div class="kbd-hint">
+          <span class="kbd">Y</span> Yes &nbsp;
+          <span class="kbd">N</span> No &nbsp;
+          <span class="kbd">←</span><span class="kbd">→</span> Navigate
+        </div>
+      </div>
+    </header>
+
+    <main>
+
+      <!-- Left: Product Page -->
+      <div id="iframe-panel">
+        <div id="iframe-overlay">
+          <div class="spinner"></div>
+          <span style="color:var(--text-muted);font-size:13px">Loading product page…</span>
+        </div>
+
+        <div id="iframe-fallback">
+          <div class="icon">🔒</div>
+          <h3>Page could not be loaded</h3>
+          <p>The product page could not be embedded.<br>Use the "Open on GeM" button in the panel to view it in a new tab.</p>
+          <a id="fallback-open-btn" href="#" target="_blank" rel="noopener" class="open-btn">
+            ↗ Open on GeM
+          </a>
+        </div>
+
+        <iframe id="product-iframe"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                title="Product page"></iframe>
+      </div>
+
+      <!-- Right: Info Panel -->
+      <div id="info-panel">
+
+        <!-- Counter + Nav -->
+        <div id="item-counter" class="card">
+          <div>
+            <span class="counter-badge" id="counter-text">— / —</span>
+            <div id="linked-badge">🔗 <span id="linked-count">0</span> rows share this link — one vote covers all</div>
+          </div>
+          <div class="nav-btns">
+            <button class="nav-btn" id="btn-prev" title="Previous (←)">‹</button>
+            <button class="nav-btn" id="btn-next" title="Next (→)">›</button>
+          </div>
+        </div>
+
+        <!-- Title -->
+        <div class="card" id="title-card">
+          <div class="card-label">Product Title</div>
+          <div class="card-value" id="prod-title">—</div>
+        </div>
+
+        <!-- Visible Product -->
+        <div class="card">
+          <div class="card-label">Visible Product in Image</div>
+          <div class="card-value" id="prod-visible">—</div>
+        </div>
+
+        <!-- AI Reason -->
+        <div class="card">
+          <div class="card-label">AI Candidate Reason</div>
+          <div class="card-value" id="prod-reason">—</div>
+        </div>
+
+        <!-- Final Adjudicator Reason -->
+        <div class="card">
+          <div class="card-label">Final Adjudicator Reason</div>
+          <div class="card-value" id="prod-final">—</div>
+        </div>
+
+        <!-- GeM Link -->
+        <div class="card" id="gem-link-card">
+          <div class="card-label">GeM Product Link</div>
+          <div id="gem-link-url">—</div>
+          <a id="btn-open-gem" href="#" target="_blank" rel="noopener noreferrer">
+            ↗ &nbsp;Open on GeM
+          </a>
+        </div>
+
+        <!-- Review Notes -->
+        <div class="card">
+          <div class="card-label">Review Notes (optional)</div>
+          <input type="text" id="input-reason" class="custom-input" placeholder="Reason for your decision" />
+          <input type="text" id="input-benchmark" class="custom-input" placeholder="Benchmark Link" style="margin-top:8px" />
+        </div>
+
+      </div>
+    </main>
+
+    <footer>
+      <button class="vote-btn" id="btn-no" disabled>
+        <span class="vote-icon">✗</span> No — Mismatch confirmed
+      </button>
+      <button class="vote-btn" id="btn-yes" disabled>
+        <span class="vote-icon">✓</span> Yes — Listing looks correct
+      </button>
+    </footer>
+
+  </div>
+
+  <div id="flash"></div>
+  <div id="toast"></div>
+
+  <script>
+    /* ── State ─────────────────────────────────────────────── */
+    let items  = [];
+    let cursor = 0;
+    let voting = false;  // prevent double-clicks
+
+    /* ── DOM refs ──────────────────────────────────────────── */
+    const iframe         = document.getElementById('product-iframe');
+    const iframeOverlay  = document.getElementById('iframe-overlay');
+    const iframeFallback = document.getElementById('iframe-fallback');
+    const fallbackBtn    = document.getElementById('fallback-open-btn');
+    const counterText    = document.getElementById('counter-text');
+    const linkedBadge    = document.getElementById('linked-badge');
+    const linkedCount    = document.getElementById('linked-count');
+    const prodTitle      = document.getElementById('prod-title');
+    const prodVisible    = document.getElementById('prod-visible');
+    const prodReason     = document.getElementById('prod-reason');
+    const prodFinal      = document.getElementById('prod-final');
+    const gemLinkUrl     = document.getElementById('gem-link-url');
+    const btnOpenGem     = document.getElementById('btn-open-gem');
+    const pbFill         = document.getElementById('progress-bar-fill');
+    const pbText         = document.getElementById('progress-text');
+    const flash          = document.getElementById('flash');
+    const toast          = document.getElementById('toast');
+    const btnYes         = document.getElementById('btn-yes');
+    const btnNo          = document.getElementById('btn-no');
+    const btnPrev        = document.getElementById('btn-prev');
+    const btnNext        = document.getElementById('btn-next');
+    const inputReason    = document.getElementById('input-reason');
+    const inputBenchmark = document.getElementById('input-benchmark');
+    const loadingState   = document.getElementById('loading-state');
+    const emptyState     = document.getElementById('empty-state');
+
+    /* ── Boot ──────────────────────────────────────────────── */
+    async function boot() {
+      try {
+        const res = await fetch('/api/items');
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(txt);
+        }
+        items = await res.json();
+        cursor = 0;
+        loadingState.classList.add('hidden');
+
+        if (!items.length) {
+          emptyState.classList.add('show');
+          refreshProgress();
+          return;
+        }
+
+        render();
+        refreshProgress();
+      } catch (e) {
+        loadingState.classList.add('hidden');
+        showToast('⚠ Failed to load items: ' + e.message);
+        console.error('Boot failed:', e);
+      }
+    }
+
+    /* ── Render current item ───────────────────────────────── */
+    function render() {
+      if (!items.length) {
+        emptyState.classList.add('show');
+        btnYes.disabled = true;
+        btnNo.disabled  = true;
+        return;
+      }
+
+      emptyState.classList.remove('show');
+      const item = items[cursor];
+
+      counterText.textContent  = `${cursor + 1} / ${items.length} remaining`;
+      prodTitle.textContent    = item.title       || '(no title)';
+      prodVisible.textContent  = item.description || '—';
+      prodReason.textContent   = item.reason      || '—';
+      prodFinal.textContent    = item.final_reason || '—';
+
+      inputReason.value    = item.saved_reason || '';
+      inputBenchmark.value = item.saved_benchmark || '';
+
+      // Review Status Banner
+      const statusBanner = document.getElementById('status-banner');
+      if (!statusBanner) {
+        const banner = document.createElement('div');
+        banner.id = 'status-banner';
+        banner.style.padding = '10px 14px';
+        banner.style.borderRadius = '8px';
+        banner.style.marginBottom = '12px';
+        banner.style.fontSize = '13px';
+        banner.style.fontWeight = '600';
+        banner.style.textAlign = 'center';
+        document.getElementById('info-panel').insertBefore(banner, document.getElementById('item-counter'));
+      }
+      
+      const bannerEl = document.getElementById('status-banner');
+      if (item.human_review === 'YES') {
+        bannerEl.style.display = 'block';
+        bannerEl.style.background = 'rgba(34, 211, 160, 0.15)';
+        bannerEl.style.color = '#22d3a0';
+        bannerEl.style.border = '1px solid rgba(34, 211, 160, 0.3)';
+        bannerEl.textContent = '✅ You marked this as YES';
+      } else if (item.human_review === 'NO') {
+        bannerEl.style.display = 'block';
+        bannerEl.style.background = 'rgba(242, 92, 92, 0.15)';
+        bannerEl.style.color = '#f25c5c';
+        bannerEl.style.border = '1px solid rgba(242, 92, 92, 0.3)';
+        bannerEl.textContent = '❌ You marked this as NO';
+      } else {
+        bannerEl.style.display = 'none';
+      }
+
+      // Linked count badge
+      if (item.linked_count > 1) {
+        linkedCount.textContent   = item.linked_count;
+        linkedBadge.style.display = 'block';
+      } else {
+        linkedBadge.style.display = 'none';
+      }
+
+      // GeM link
+      const url = (item.link || '').trim();
+      gemLinkUrl.textContent = url || '(no link)';
+      if (url) {
+        btnOpenGem.href              = url;
+        btnOpenGem.style.display     = 'flex';
+        fallbackBtn.href             = url;
+      } else {
+        btnOpenGem.style.display     = 'none';
+      }
+
+
+      // Navigation buttons
+      btnPrev.disabled = cursor === 0;
+      btnNext.disabled = cursor === items.length - 1;
+      btnYes.disabled  = false;
+      btnNo.disabled   = false;
+
+      // Load product page
+      loadIframe(url);
+    }
+
+    /* ── Iframe loading via server proxy ────────────────────── */
+    let iframeTimer = null;
+
+    function loadIframe(url) {
+      clearTimeout(iframeTimer);
+      iframeFallback.classList.remove('show');
+      iframeOverlay.classList.remove('hidden');
+      iframe.src = 'about:blank';
+
+      if (!url) {
+        iframeOverlay.classList.add('hidden');
+        return;
+      }
+
+      iframe.onload = () => {
+        clearTimeout(iframeTimer);
+        iframeOverlay.classList.add('hidden');
+        try {
+          const doc = iframe.contentDocument;
+          if (doc && (!doc.body || doc.body.innerHTML.trim() === '')) {
+            showFallback(url);
+          }
+        } catch (e) {
+          // cross-origin means it loaded fine
+          iframeFallback.classList.remove('show');
+        }
+      };
+
+      iframe.onerror = () => {
+        clearTimeout(iframeTimer);
+        iframeOverlay.classList.add('hidden');
+        showFallback(url);
+      };
+
+      // 15s timeout — if still loading, show fallback
+      iframeTimer = setTimeout(() => {
+        iframeOverlay.classList.add('hidden');
+        try {
+          const doc = iframe.contentDocument;
+          if (!doc || !doc.body || doc.body.innerHTML.trim() === '') {
+            showFallback(url);
+          }
+        } catch (e) { /* cross-origin = loaded fine */ }
+      }, 15000);
+
+      // Route through our proxy to strip X-Frame-Options
+      iframe.src = '/proxy?url=' + encodeURIComponent(url);
+    }
+
+    function showFallback(url) {
+      iframeFallback.classList.add('show');
+      if (url) fallbackBtn.href = url;
+    }
+
+    /* ── Vote ──────────────────────────────────────────────── */
+    async function vote(decision) {
+      if (voting) return;
+      const item = items[cursor];
+      if (!item) return;
+
+      voting = true;
+      btnYes.disabled = true;
+      btnNo.disabled  = true;
+
+      try {
+        const res = await fetch('/api/review', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            link:           item.link,
+            decision,
+            reason:         inputReason.value.trim(),
+            benchmark_link: inputBenchmark.value.trim(),
+          }),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(errText);
+        }
+
+        const result = await res.json();
+
+        // Flash feedback
+        flash.className = (decision === 'YES' ? 'yes' : 'no') + ' show';
+        setTimeout(() => flash.classList.remove('show'), 250);
+
+        const note = result.rows_updated > 1 ? ` (${result.rows_updated} rows updated)` : '';
+        showToast(decision === 'YES' ? `✅ Correct${note}` : `❌ Mismatch confirmed${note}`);
+
+        // Update local item state so it stays in UI
+        item.human_review = decision;
+        item.saved_reason = inputReason.value.trim();
+        item.saved_benchmark = inputBenchmark.value.trim();
+
+        refreshProgress();
+        render();
+
+      } catch (err) {
+        showToast('⚠ Save failed: ' + err.message);
+        console.error('Vote error:', err);
+        btnYes.disabled = false;
+        btnNo.disabled  = false;
+      } finally {
+        voting = false;
+      }
+    }
+
+    /* ── Progress bar ──────────────────────────────────────── */
+    async function refreshProgress() {
+      try {
+        const res  = await fetch('/api/progress');
+        const data = await res.json();
+        const pct  = data.total ? Math.round(data.reviewed / data.total * 100) : 0;
+        pbFill.style.width = pct + '%';
+        pbText.textContent = `${data.reviewed} / ${data.total} reviewed`;
+      } catch (e) {
+        console.error('Progress fetch failed:', e);
+      }
+    }
+
+    /* ── Toast ─────────────────────────────────────────────── */
+    let toastTimer;
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    /* ── Controls ──────────────────────────────────────────── */
+    btnPrev.addEventListener('click', () => { if (cursor > 0)               { cursor--; render(); } });
+    btnNext.addEventListener('click', () => { if (cursor < items.length - 1) { cursor++; render(); } });
+    btnYes.addEventListener('click',  () => vote('YES'));
+    btnNo.addEventListener('click',   () => vote('NO'));
+
+    document.addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (voting) return;
+      if (e.key === 'y' || e.key === 'Y') vote('YES');
+      if (e.key === 'n' || e.key === 'N') vote('NO');
+      if (e.key === 'ArrowLeft'  && cursor > 0)               { cursor--; render(); }
+      if (e.key === 'ArrowRight' && cursor < items.length - 1) { cursor++; render(); }
+    });
+
+    /* ── Init ──────────────────────────────────────────────── */
+    boot();
+  </script>
+</body>
+
+</html>
