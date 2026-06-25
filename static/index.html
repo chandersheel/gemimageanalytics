@@ -683,13 +683,26 @@
         const note = result.rows_updated > 1 ? ` (${result.rows_updated} rows updated)` : '';
         showToast(decision === 'YES' ? `✅ Correct${note}` : `❌ Mismatch confirmed${note}`);
 
-        // Update local item state so it stays in UI
-        item.human_review = decision;
-        item.saved_reason = inputReason.value.trim();
-        item.saved_benchmark = inputBenchmark.value.trim();
-
         refreshProgress();
-        render();
+
+        // Reload fresh item list from server — removes this item and any
+        // others reviewed by teammates, then auto-advance to next item
+        try {
+          const freshRes = await fetch('/api/items');
+          if (freshRes.ok) {
+            const freshItems = await freshRes.json();
+            items  = freshItems;
+            // cursor stays — it now points to the next unreviewed item
+            cursor = Math.min(cursor, Math.max(0, items.length - 1));
+          }
+        } catch (_) { /* non-fatal, keep existing list and advance */ }
+
+        // Auto-advance: move to next item (current was just reviewed)
+        if (items.length > 0) {
+          render();
+        } else {
+          emptyState.classList.add('show');
+        }
 
       } catch (err) {
         showToast('⚠ Save failed: ' + err.message);

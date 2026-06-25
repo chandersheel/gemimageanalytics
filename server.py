@@ -51,7 +51,7 @@ _SERVICE_LOCK = threading.Lock()
 _CACHE_LOCK   = threading.Lock()
 
 def _get_service():
-    """Build Google Sheets API service once, reuse forever.
+    """Build Google Sheets API service once, reuse forever (thread-safe).
 
     Credential resolution order:
     1. GOOGLE_CREDENTIALS_JSON env var — full JSON content as a string (Railway/cloud)
@@ -63,28 +63,31 @@ def _get_service():
         if _SERVICE is not None:
             return _SERVICE
 
-    # 1. Inline JSON content from env var (preferred for cloud hosting)
-    inline_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "").strip()
-    if inline_json:
-        info = json.loads(inline_json)
-        creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+        # 1. Inline JSON content from env var (preferred for cloud hosting)
+        inline_json = os.environ.get("GOOGLE_CREDENTIALS_JSON", "").strip()
+        if inline_json:
+            try:
+                info = json.loads(inline_json)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Failed to parse GOOGLE_CREDENTIALS_JSON: {e}. Make sure you copied the raw JSON exactly.")
+            creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+            _SERVICE = build("sheets", "v4", credentials=creds, cache_discovery=False)
+            return _SERVICE
+
+        # 2. Path to JSON file from env var
+        key_path = os.environ.get(
+            "GOOGLE_SERVICE_ACCOUNT_JSON",
+            os.path.join(os.path.dirname(__file__), "credentials.json"),
+        )
+        if not os.path.exists(key_path):
+            raise FileNotFoundError(
+                f"Service account key not found at {key_path}. "
+                "Set GOOGLE_CREDENTIALS_JSON (JSON content) or GOOGLE_SERVICE_ACCOUNT_JSON (file path), "
+                "or place credentials.json next to server.py."
+            )
+        creds = service_account.Credentials.from_service_account_file(key_path, scopes=SCOPES)
         _SERVICE = build("sheets", "v4", credentials=creds, cache_discovery=False)
         return _SERVICE
-
-    # 2. Path to JSON file from env var
-    key_path = os.environ.get(
-        "GOOGLE_SERVICE_ACCOUNT_JSON",
-        os.path.join(os.path.dirname(__file__), "credentials.json"),
-    )
-    if not os.path.exists(key_path):
-        raise FileNotFoundError(
-            f"Service account key not found at {key_path}. "
-            "Set GOOGLE_CREDENTIALS_JSON (JSON content) or GOOGLE_SERVICE_ACCOUNT_JSON (file path), "
-            "or place credentials.json next to server.py."
-        )
-    creds = service_account.Credentials.from_service_account_file(key_path, scopes=SCOPES)
-    _SERVICE = build("sheets", "v4", credentials=creds, cache_discovery=False)
-    return _SERVICE
 
 # ---------------------------------------------------------------------------
 # In-memory sheet cache
@@ -140,6 +143,7 @@ def row_to_dict(headers, row):
 
 def batch_write(updates):
     """Write multiple cells at once.  updates: list of (row_1based, col_1based, value)."""
+    global _SERVICE
     if not updates:
         return
     data = [{
@@ -147,10 +151,16 @@ def batch_write(updates):
         "values": [[value]],
     } for row, col, value in updates]
 
-    _get_service().spreadsheets().values().batchUpdate(
-        spreadsheetId=SPREADSHEET_ID,
-        body={"valueInputOption": "RAW", "data": data},
-    ).execute()
+    try:
+        _get_service().spreadsheets().values().batchUpdate(
+            spreadsheetId=SPREADSHEET_ID,
+            body={"valueInputOption": "RAW", "data": data},
+        ).execute()
+    except Exception:
+        # Reset service so it gets rebuilt on next call
+        with _SERVICE_LOCK:
+            _SERVICE = None
+        raise
     _invalidate_cache()
 
 # ---------------------------------------------------------------------------
@@ -265,7 +275,7 @@ def proxy():
 def get_items():
     """Return list of unique product links that still need human review."""
     try:
-        headers, rows = read_all_rows()
+        headers, rows = read_all_rows(force=True)  # always fetch fresh from sheet
     except Exception as e:
         return jsonify({"error": f"Failed to read sheet: {e}"}), 500
 
