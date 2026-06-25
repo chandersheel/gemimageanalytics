@@ -270,7 +270,7 @@ def proxy():
 def get_items():
     """Return list of unique product links that still need human review."""
     try:
-        headers, rows = read_all_rows(force=True)  # fresh fetch on page load to pick up other reviewers' work
+        headers, rows = read_all_rows()  # uses cache; refreshed automatically after every vote
     except Exception as e:
         return jsonify({"error": f"Failed to read sheet: {e}"}), 500
 
